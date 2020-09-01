@@ -405,18 +405,12 @@ inline size_t get_submessage_array_deserialize(
   cycdeser & deser,
   void * field,
   void * & subros_message,
-  bool call_new,
-  size_t sub_members_size,
-  size_t max_align)
+  size_t,
+  size_t)
 {
-  (void)member;
   uint32_t vsize = deser.deserialize_len(1);
-  auto vector = reinterpret_cast<std::vector<unsigned char> *>(field);
-  if (call_new) {
-    new(vector) std::vector<unsigned char>;
-  }
-  vector->resize(vsize * align_int_(max_align, sub_members_size));
-  subros_message = reinterpret_cast<void *>(vector->data());
+  member->resize_function(field, vsize);
+  subros_message = member->get_function(field, 0);
   return vsize;
 }
 
@@ -425,7 +419,6 @@ inline size_t get_submessage_array_deserialize(
   cycdeser & deser,
   void * field,
   void * & subros_message,
-  bool,
   size_t sub_members_size,
   size_t)
 {
@@ -435,6 +428,29 @@ inline size_t get_submessage_array_deserialize(
   rosidl_runtime_c__void__Sequence__init(tmparray, vsize, sub_members_size);
   subros_message = reinterpret_cast<void *>(tmparray->data);
   return vsize;
+}
+
+inline void * get_submessage_pointer(
+  const rosidl_typesupport_introspection_cpp::MessageMember * member,
+  void * field,
+  size_t index,
+  void *,
+  size_t,
+  size_t)
+{
+  return member->get_function(field, index);
+}
+
+inline void * get_submessage_pointer(
+  const rosidl_typesupport_introspection_c__MessageMember *,
+  void *,
+  size_t,
+  void * subros_message,
+  size_t sub_members_size,
+  size_t max_align)
+{
+  subros_message = static_cast<char *>(subros_message) + sub_members_size;
+  return align_ptr_(max_align, subros_message);
 }
 
 template<typename MembersType>
@@ -504,15 +520,16 @@ bool TypeSupport<MembersType>::deserializeROSmessage(
               subros_message = field;
               array_size = member->array_size_;
             } else {
-              array_size = deser.deserialize_len(1);
-              member->resize_function(field, array_size);
-              subros_message = member->get_function(field, 0);
+              array_size = get_submessage_array_deserialize(
+                member, deser, field, subros_message,
+                sub_members_size, max_align);
             }
 
             for (size_t index = 0; index < array_size; ++index) {
               deserializeROSmessage(deser, sub_members, subros_message);
-              subros_message = static_cast<char *>(subros_message) + sub_members_size;
-              subros_message = align_ptr_(max_align, subros_message);
+              subros_message = get_submessage_pointer(
+                member, field, index + 1, subros_message,
+                sub_members_size, max_align);
             }
           }
         }
